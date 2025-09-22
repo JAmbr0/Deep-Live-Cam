@@ -196,13 +196,17 @@ pip install git+https://github.com/TencentARC/GFPGAN.git@master
 2. Install [cuDNN v8.9.7 for CUDA 12.x](https://developer.nvidia.com/rdp/cudnn-archive) (required for onnxruntime-gpu):
    - Download cuDNN v8.9.7 for CUDA 12.x
    - Make sure the cuDNN bin directory is in your system PATH
+   - Update your NVIDIA driver to version 555 or newer so CUDA 12.8 libraries load correctly
+   - Remove older CUDA 11.x folders from `PATH`/`LD_LIBRARY_PATH` to avoid mixing binaries
 3. Install dependencies:
 
 ```bash
 pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 pip uninstall onnxruntime onnxruntime-gpu
-pip install onnxruntime-gpu==1.21.0
+pip install onnxruntime-gpu==1.22.0
 ```
+
+> The CLI now warns if an older onnxruntime package or a CUDA 11.x PyTorch build is detected when requesting the CUDA execution provider.
 
 3. Usage:
 

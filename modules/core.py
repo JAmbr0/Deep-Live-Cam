@@ -6,6 +6,7 @@ if any(arg.startswith('--execution-provider') for arg in sys.argv):
 # reduce tensorflow log level
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import warnings
+import re
 from typing import List
 import platform
 import signal
@@ -108,6 +109,8 @@ def parse_args() -> None:
         print('\033[33mArgument --gpu-threads is deprecated. Use --execution-threads instead.\033[0m')
         modules.globals.execution_threads = args.gpu_threads_deprecated
 
+    validate_cuda_configuration()
+
 
 def encode_execution_providers(execution_providers: List[str]) -> List[str]:
     return [execution_provider.replace('ExecutionProvider', '').lower() for execution_provider in execution_providers]
@@ -116,6 +119,47 @@ def encode_execution_providers(execution_providers: List[str]) -> List[str]:
 def decode_execution_providers(execution_providers: List[str]) -> List[str]:
     return [provider for provider, encoded_execution_provider in zip(onnxruntime.get_available_providers(), encode_execution_providers(onnxruntime.get_available_providers()))
             if any(execution_provider in encoded_execution_provider for execution_provider in execution_providers)]
+
+
+def _parse_version_triplet(version: str) -> tuple[int, int, int] | None:
+    parts = re.split(r'[.+-]', version)
+    numbers = []
+    for part in parts:
+        if part.isdigit():
+            numbers.append(int(part))
+        else:
+            break
+    if not numbers:
+        return None
+    while len(numbers) < 3:
+        numbers.append(0)
+    return tuple(numbers[:3])
+
+
+def validate_cuda_configuration() -> None:
+    if 'CUDAExecutionProvider' not in modules.globals.execution_providers:
+        return
+
+    ort_version = _parse_version_triplet(onnxruntime.__version__)
+    if ort_version and ort_version < (1, 20, 0):
+        update_status(
+            f'onnxruntime-gpu {onnxruntime.__version__} is not built for CUDA 12.x. Install 1.20.0 or newer.',
+            'DLC.CORE'
+        )
+
+    torch_cuda_version = getattr(getattr(torch, 'version', None), 'cuda', None)
+    torch_cuda_tuple = _parse_version_triplet(torch_cuda_version) if torch_cuda_version else None
+    if torch_cuda_tuple and torch_cuda_tuple[0] < 12:
+        update_status(
+            f'PyTorch reports CUDA {torch_cuda_version}. Reinstall the CUDA 12.x (cu12x) PyTorch wheel for best compatibility.',
+            'DLC.CORE'
+        )
+
+    if hasattr(torch, 'cuda') and not torch.cuda.is_available():
+        update_status(
+            'CUDAExecutionProvider selected but no CUDA device is available. Confirm your CUDA 12.8 toolkit and drivers.',
+            'DLC.CORE'
+        )
 
 
 def suggest_max_memory() -> int:

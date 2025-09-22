@@ -16,6 +16,7 @@ from modules.utilities import (
 )
 from modules.cluster_analysis import find_closest_centroid
 import os
+import onnxruntime
 
 FACE_SWAPPER = None
 THREAD_LOCK = threading.Lock()
@@ -27,10 +28,28 @@ models_dir = os.path.join(
 )
 
 
+def _use_fp16_model() -> bool:
+    if "CUDAExecutionProvider" not in modules.globals.execution_providers:
+        return False
+
+    version_text = getattr(onnxruntime, "__version__", "0.0.0")
+    parts = []
+    for token in version_text.split('.'):
+        if token.isdigit():
+            parts.append(int(token))
+        else:
+            break
+    while len(parts) < 3:
+        parts.append(0)
+    ort_version = tuple(parts[:3])
+    # onnxruntime >= 1.20.0 produces NaNs with the fp16 swapper on CUDA 12, leading to blurry faces
+    return ort_version < (1, 20, 0)
+
+
 def pre_check() -> bool:
     download_directory_path = models_dir
     model_url = "https://huggingface.co/hacksider/deep-live-cam/resolve/main/inswapper_128.onnx"
-    if "CUDAExecutionProvider" in modules.globals.execution_providers:
+    if _use_fp16_model():
         model_url = "https://huggingface.co/hacksider/deep-live-cam/resolve/main/inswapper_128_fp16.onnx"
 
     conditional_download(
@@ -63,8 +82,13 @@ def get_face_swapper() -> Any:
     with THREAD_LOCK:
         if FACE_SWAPPER is None:
             model_name = "inswapper_128.onnx"
-            if "CUDAExecutionProvider" in modules.globals.execution_providers:
+            if _use_fp16_model():
                 model_name = "inswapper_128_fp16.onnx"
+            elif "CUDAExecutionProvider" in modules.globals.execution_providers:
+                update_status(
+                    "CUDA fp16 swapper disabled for onnxruntime >= 1.20; using fp32 model to avoid blurry results.",
+                    NAME,
+                )
             model_path = os.path.join(models_dir, model_name)
             FACE_SWAPPER = insightface.model_zoo.get_model(
                 model_path, providers=modules.globals.execution_providers
