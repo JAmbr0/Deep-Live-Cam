@@ -1,8 +1,8 @@
 from typing import Any, List
 import cv2
 import threading
-import gfpgan
 import os
+import sys
 
 import modules.globals
 import modules.processors.frame.core
@@ -16,6 +16,19 @@ from modules.utilities import (
     is_image,
     is_video,
 )
+
+# torchvision>=0.16 removed functional_tensor; provide shim for basicsr import
+try:
+    import torchvision.transforms.functional_tensor as _tv_functional_tensor  # type: ignore
+except ImportError:
+    from types import ModuleType
+    from torchvision.transforms import functional as _tv_functional
+
+    _tv_functional_tensor = ModuleType("torchvision.transforms.functional_tensor")
+    _tv_functional_tensor.rgb_to_grayscale = _tv_functional.rgb_to_grayscale  # type: ignore[attr-defined]
+    sys.modules["torchvision.transforms.functional_tensor"] = _tv_functional_tensor
+
+import gfpgan
 
 FACE_ENHANCER = None
 THREAD_SEMAPHORE = threading.Semaphore()
